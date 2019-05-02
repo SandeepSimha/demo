@@ -1,8 +1,8 @@
 package com.sancheru.demo;
 
 import android.app.ProgressDialog;
+import android.content.Context;
 import android.os.Bundle;
-import android.os.Environment;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
@@ -17,13 +17,10 @@ import com.sancheru.demo.network.GetDataService;
 import com.sancheru.demo.network.RetrofitClientInstance;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URL;
-import java.net.URLConnection;
 
 import okhttp3.ResponseBody;
 import retrofit2.Call;
@@ -35,8 +32,8 @@ public class PackageFragment extends Fragment implements View.OnClickListener {
     private static final String TAG = "PackageFragment";
     private TextView mPackageName;
     private Button mButton;
-    private PackagePathPresenter mPackagePresenter;
     private ProgressDialog progressDoalog;
+    public static final String EMPTY_STRING = "";
 
     @Nullable
     @Override
@@ -54,25 +51,18 @@ public class PackageFragment extends Fragment implements View.OnClickListener {
         initViews(view);
     }
 
-    @Override
-    public void onStart() {
-        super.onStart();
-        //mPackagePresenter.fetchData();
-    }
-
     private void initViews(View view) {
         mPackageName = view.findViewById(R.id.tv_package);
         mButton = view.findViewById(R.id.bt_reveal_path);
         mButton.setOnClickListener(this);
 
-        mPackageName.setText("https://drive.google.com/open?id=1ehzo4dS1Fe6s5GfyCOdRfvbNK-eqCFrf");
+        mPackageName.setText(EMPTY_STRING);
     }
 
     @Override
     public void onClick(View view) {
         int id = view.getId();
         if (id == R.id.bt_reveal_path) {
-            //downloadFile("https://www.dropbox.com/s/s1dqshs8s4mkxq4/AZipFile.zip?dl=0", null);
             byRetrofit();
         }
     }
@@ -82,7 +72,7 @@ public class PackageFragment extends Fragment implements View.OnClickListener {
 
         /*Create handle for the RetrofitInstance interface*/
         GetDataService downloadService = RetrofitClientInstance.getRetrofitInstance().create(GetDataService.class);
-        Call<ResponseBody> call = downloadService.downloadFileWithDynamicUrlSync("https://koenig-media.raywenderlich.com/uploads/2018/08/RW_Kotlin_Cheatsheet_1_0.pdf");
+        Call<ResponseBody> call = downloadService.downloadFileWithDynamicUrlSync("https://www.dropbox.com/s/s1dqshs8s4mkxq4/AZipFile.zip");
 
         call.enqueue(new Callback<ResponseBody>() {
             @Override
@@ -91,9 +81,11 @@ public class PackageFragment extends Fragment implements View.OnClickListener {
                 if (response.isSuccessful()) {
                     Log.d(TAG, "server contacted and has file");
 
-                    boolean writtenToDisk = writeResponseBodyToDisk(response.body());
+                    File writtenToDiskFileLocation = writeResponseBodyToDisk(getActivity(), response.body());
+                    if (writtenToDiskFileLocation != null)
+                        mPackageName.setText(writtenToDiskFileLocation.toString());
 
-                    Log.d(TAG, "file download was a success? " + writtenToDisk);
+                    Log.d(TAG, "file download was a success? " + writtenToDiskFileLocation);
                 } else {
                     Log.d(TAG, "server contact failed");
                 }
@@ -106,11 +98,9 @@ public class PackageFragment extends Fragment implements View.OnClickListener {
         });
     }
 
-    private boolean writeResponseBodyToDisk(ResponseBody body) {
+    private File writeResponseBodyToDisk(Context context, ResponseBody body) {
         try {
-            // todo change the file location/name according to your needs
-            File futureStudioIconFile = new File(Environment.getExternalStoragePublicDirectory(null) + File.separator + "MyFile.zip");
-
+            File futureStudioIconFile = new File(context.getExternalFilesDir(null) + File.separator + "MyFile.zip");
             InputStream inputStream = null;
             OutputStream outputStream = null;
 
@@ -131,17 +121,17 @@ public class PackageFragment extends Fragment implements View.OnClickListener {
                     }
 
                     outputStream.write(fileReader, 0, read);
-
                     fileSizeDownloaded += read;
 
                     Log.d(TAG, "file download: " + fileSizeDownloaded + " of " + fileSize);
+                    progressDoalog.cancel();
                 }
 
                 outputStream.flush();
 
-                return true;
+                return futureStudioIconFile;
             } catch (IOException e) {
-                return false;
+                return null;
             } finally {
                 if (inputStream != null) {
                     inputStream.close();
@@ -152,78 +142,7 @@ public class PackageFragment extends Fragment implements View.OnClickListener {
                 }
             }
         } catch (IOException e) {
-            return false;
+            return null;
         }
-    }
-
-    public static void downloadFile(final String url, final File outputFile) {
-
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    /*URL u = new URL(url);
-                    URLConnection conn = u.openConnection();
-                    conn.connect();
-
-                    int contentLength = conn.getContentLength();
-
-                    DataInputStream stream = new DataInputStream(u.openStream());
-
-                    byte[] buffer = new byte[contentLength];
-                    stream.readFully(buffer);
-                    stream.close();
-
-                    DataOutputStream fos = new DataOutputStream(new FileOutputStream(outputFile));
-                    fos.write(buffer);
-                    fos.flush();
-                    fos.close();*/
-
-                    URL sourceUrl = new URL(url);
-                    URLConnection conn = sourceUrl.openConnection();
-                    conn.connect();
-                    InputStream inputStream = conn.getInputStream();
-
-                    int fileSize = conn.getContentLength();
-
-                    File savefilepath = new File("/data/user/0/com.trekbikes.codetest/files/");
-                    if (!savefilepath.exists()) {
-                        savefilepath.mkdirs();
-                    }
-                    File savefile = new File("/data/user/0/com.trekbikes.codetest/files/");
-                    if (savefile.exists()) {
-                        savefile.delete();
-                    }
-                    savefile.createNewFile();
-
-                    FileOutputStream outputStream = new FileOutputStream("/data/user/0/com.trekbikes.codetest/files/", true);
-                    byte[] buffer = new byte[1024];
-                    int readCount = 0;
-                    int readNum = 0;
-                    int prevPercent = 0;
-                    while (readCount < fileSize && readNum != -1) {
-                        readNum = inputStream.read(buffer);
-                        if (readNum > -1) {
-                            outputStream.write(buffer);
-
-                            readCount = readCount + readNum;
-
-                            int percent = (int) (readCount * 100 / fileSize);
-                            if (percent > prevPercent) {
-                                prevPercent = percent;
-                            }
-                        }
-                    }
-                    outputStream.flush();
-                    outputStream.close();
-                    inputStream.close();
-
-                } catch (FileNotFoundException e) {
-                    return; // swallow a 404
-                } catch (IOException e) {
-                    return; // swallow a 404
-                }
-            }
-        });
     }
 }
