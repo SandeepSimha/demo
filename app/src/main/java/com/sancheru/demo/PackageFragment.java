@@ -2,6 +2,7 @@ package com.sancheru.demo;
 
 import android.app.ProgressDialog;
 import android.os.Bundle;
+import android.os.Environment;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
@@ -20,15 +21,18 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URL;
 import java.net.URLConnection;
 
+import okhttp3.ResponseBody;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
 public class PackageFragment extends Fragment implements View.OnClickListener {
 
+    private static final String TAG = "PackageFragment";
     private TextView mPackageName;
     private Button mButton;
     private PackagePathPresenter mPackagePresenter;
@@ -61,15 +65,15 @@ public class PackageFragment extends Fragment implements View.OnClickListener {
         mButton = view.findViewById(R.id.bt_reveal_path);
         mButton.setOnClickListener(this);
 
-        mPackageName.setText("/data/user/0/com.trekbikes.codetest/files/MyFile.zip");
+        mPackageName.setText("https://drive.google.com/open?id=1ehzo4dS1Fe6s5GfyCOdRfvbNK-eqCFrf");
     }
 
     @Override
     public void onClick(View view) {
         int id = view.getId();
         if (id == R.id.bt_reveal_path) {
-            downloadFile("https://www.dropbox.com/s/s1dqshs8s4mkxq4/AZipFile.zip?dl=0", null);
-            //byRetrofit();
+            //downloadFile("https://www.dropbox.com/s/s1dqshs8s4mkxq4/AZipFile.zip?dl=0", null);
+            byRetrofit();
         }
     }
 
@@ -77,21 +81,79 @@ public class PackageFragment extends Fragment implements View.OnClickListener {
         progressDoalog.show();
 
         /*Create handle for the RetrofitInstance interface*/
-        GetDataService service = RetrofitClientInstance.getRetrofitInstance().create(GetDataService.class);
-        Call<File> call = service.getZipFile();
-        call.enqueue(new Callback<File>() {
+        GetDataService downloadService = RetrofitClientInstance.getRetrofitInstance().create(GetDataService.class);
+        Call<ResponseBody> call = downloadService.downloadFileWithDynamicUrlSync("https://koenig-media.raywenderlich.com/uploads/2018/08/RW_Kotlin_Cheatsheet_1_0.pdf");
+
+        call.enqueue(new Callback<ResponseBody>() {
             @Override
-            public void onResponse(Call<File> call, Response<File> response) {
-                progressDoalog.dismiss();
-                Log.e("Pak", "onSucess");
+            public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+
+                if (response.isSuccessful()) {
+                    Log.d(TAG, "server contacted and has file");
+
+                    boolean writtenToDisk = writeResponseBodyToDisk(response.body());
+
+                    Log.d(TAG, "file download was a success? " + writtenToDisk);
+                } else {
+                    Log.d(TAG, "server contact failed");
+                }
             }
 
             @Override
-            public void onFailure(Call<File> call, Throwable t) {
-                progressDoalog.dismiss();
-                Log.e("Pak", "failure " + t.getMessage());
+            public void onFailure(Call<ResponseBody> call, Throwable t) {
+                Log.e(TAG, "error " + t.getLocalizedMessage());
             }
         });
+    }
+
+    private boolean writeResponseBodyToDisk(ResponseBody body) {
+        try {
+            // todo change the file location/name according to your needs
+            File futureStudioIconFile = new File(Environment.getExternalStoragePublicDirectory(null) + File.separator + "MyFile.zip");
+
+            InputStream inputStream = null;
+            OutputStream outputStream = null;
+
+            try {
+                byte[] fileReader = new byte[4096];
+
+                long fileSize = body.contentLength();
+                long fileSizeDownloaded = 0;
+
+                inputStream = body.byteStream();
+                outputStream = new FileOutputStream(futureStudioIconFile);
+
+                while (true) {
+                    int read = inputStream.read(fileReader);
+
+                    if (read == -1) {
+                        break;
+                    }
+
+                    outputStream.write(fileReader, 0, read);
+
+                    fileSizeDownloaded += read;
+
+                    Log.d(TAG, "file download: " + fileSizeDownloaded + " of " + fileSize);
+                }
+
+                outputStream.flush();
+
+                return true;
+            } catch (IOException e) {
+                return false;
+            } finally {
+                if (inputStream != null) {
+                    inputStream.close();
+                }
+
+                if (outputStream != null) {
+                    outputStream.close();
+                }
+            }
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     public static void downloadFile(final String url, final File outputFile) {
